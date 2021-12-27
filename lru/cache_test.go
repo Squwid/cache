@@ -12,7 +12,7 @@ type TestLRU struct {
 	Value string
 }
 
-func (l TestLRU) ID() string { return l.Value }
+func (l TestLRU) Key() string { return l.Value }
 
 func TestSmallCache(t *testing.T) {
 	cache := NewCache[TestLRU](4)

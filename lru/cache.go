@@ -2,7 +2,7 @@ package lru
 
 import "sync"
 
-type CacheConstraint interface{ ID() string }
+type CacheConstraint interface{ Key() string }
 
 type Cache[T CacheConstraint] struct {
 	m map[string]*Node[T]
@@ -44,12 +44,12 @@ func (c *Cache[T]) Size() int {
 func (c *Cache[T]) cacheSize() int { return c.size }
 
 func (c *Cache[T]) Add(item T) {
-	id := item.ID()
+	key := item.Key()
 
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	n, ok := c.m[id]
+	n, ok := c.m[key]
 	if ok {
 		n.Item = item
 		c.moveNodeToFront(n)
@@ -58,23 +58,23 @@ func (c *Cache[T]) Add(item T) {
 			c.evictTail()
 		}
 		n = &Node[T]{Item: item}
-		c.m[id] = n
+		c.m[key] = n
 		c.insertToFront(n)
 	}
 }
 
 // Remove removes an item from the cache. It returns the object if it was removed,
 // otherwise nil will be returned
-func (c *Cache[T]) Remove(id string) *T {
+func (c *Cache[T]) Remove(key string) *T {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	n, ok := c.m[id]
+	n, ok := c.m[key]
 	if !ok {
 		return nil
 	}
 	c.removeNode(n)
-	c.removeFromMap(id)
+	c.removeFromMap(key)
 
 	return &n.Item
 }
@@ -121,7 +121,7 @@ func (c *Cache[T]) evictTail() {
 
 	n := c.Tail
 	c.removeNode(n)
-	c.removeFromMap(n.Item.ID())
+	c.removeFromMap(n.Item.Key())
 }
 
 // removeNode removes a node from the cache. removeNode does NOT remove
