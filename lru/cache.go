@@ -7,11 +7,11 @@ type CacheConstraint interface{ Key() string }
 type Cache[T CacheConstraint] struct {
 	m map[string]*Node[T]
 
-	MaxSize int
+	maxSize int
 	size    int
 
-	Head *Node[T]
-	Tail *Node[T]
+	head *Node[T]
+	tail *Node[T]
 
 	lock *sync.Mutex
 }
@@ -26,9 +26,9 @@ type Node[T CacheConstraint] struct {
 func NewCache[T CacheConstraint](size int) *Cache[T] {
 	return &Cache[T]{
 		m:       make(map[string]*Node[T]),
-		MaxSize: size,
-		Head:    nil,
-		Tail:    nil,
+		maxSize: size,
+		head:    nil,
+		tail:    nil,
 		lock:    &sync.Mutex{},
 	}
 }
@@ -54,7 +54,7 @@ func (c *Cache[T]) Add(item T) {
 		n.Item = item
 		c.moveNodeToFront(n)
 	} else {
-		if c.cacheSize() == c.MaxSize {
+		if c.cacheSize() == c.maxSize {
 			c.evictTail()
 		}
 		n = &Node[T]{Item: item}
@@ -96,10 +96,10 @@ func (c *Cache[T]) PeekHead() *T {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if c.Head == nil {
+	if c.head == nil {
 		return nil
 	}
-	return &c.Head.Item
+	return &c.head.Item
 }
 
 // PeekTail will return the item at the tail without moving its position
@@ -108,18 +108,18 @@ func (c *Cache[T]) PeekTail() *T {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	if c.Tail == nil {
+	if c.tail == nil {
 		return nil
 	}
-	return &c.Tail.Item
+	return &c.tail.Item
 }
 
 func (c *Cache[T]) evictTail() {
-	if c.Tail == nil {
+	if c.tail == nil {
 		return
 	}
 
-	n := c.Tail
+	n := c.tail
 	c.removeNode(n)
 	c.removeFromMap(n.Item.Key())
 }
@@ -132,23 +132,23 @@ func (c *Cache[T]) removeNode(node *Node[T]) {
 	}
 
 	if c.cacheSize() == 1 {
-		c.Head = nil
-		c.Tail = nil
+		c.head = nil
+		c.tail = nil
 	} else if c.cacheSize() == 2 {
-		if node == c.Head {
-			c.Head = c.Tail
-			c.Head.Prev = nil
+		if node == c.head {
+			c.head = c.tail
+			c.head.Prev = nil
 		} else {
-			c.Tail = c.Head
-			c.Tail.Next = nil
+			c.tail = c.head
+			c.tail.Next = nil
 		}
 	} else {
-		if node == c.Head {
-			c.Head = node.Next
-			c.Head.Prev = nil
-		} else if node == c.Tail {
-			c.Tail = node.Prev
-			c.Tail.Next = nil
+		if node == c.head {
+			c.head = node.Next
+			c.head.Prev = nil
+		} else if node == c.tail {
+			c.tail = node.Prev
+			c.tail.Next = nil
 		} else {
 			node.Prev.Next = node.Next
 			node.Next.Prev = node.Prev
@@ -167,12 +167,12 @@ func (c *Cache[T]) removeFromMap(id string) { delete(c.m, id) }
 // expects the node to already to be added to c.m
 func (c *Cache[T]) insertToFront(node *Node[T]) {
 	if c.cacheSize() == 0 {
-		c.Head = node
-		c.Tail = node
+		c.head = node
+		c.tail = node
 	} else {
-		node.Next = c.Head
-		c.Head.Prev = node
-		c.Head = node
+		node.Next = c.head
+		c.head.Prev = node
+		c.head = node
 	}
 
 	c.size++
@@ -193,7 +193,7 @@ func (c *Cache[T]) ForEach(f func(item T, index int)) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	node := c.Head
+	node := c.head
 	var i = 0
 	for node != nil {
 		f(node.Item, i)
