@@ -1,8 +1,8 @@
 package lru
 
-type CacheConstraint interface {
-	ID() string
-}
+import "sync"
+
+type CacheConstraint interface{ ID() string }
 
 type Cache[T CacheConstraint] struct {
 	m map[string]*Node[T]
@@ -12,6 +12,8 @@ type Cache[T CacheConstraint] struct {
 
 	Head *Node[T]
 	Tail *Node[T]
+
+	lock *sync.Mutex
 }
 
 type Node[T CacheConstraint] struct {
@@ -27,21 +29,32 @@ func NewCache[T CacheConstraint](size int) *Cache[T] {
 		MaxSize: size,
 		Head:    nil,
 		Tail:    nil,
+		lock:    &sync.Mutex{},
 	}
 }
 
 // Size returns the current size of the cache
-func (c *Cache[T]) Size() int { return c.size }
+func (c *Cache[T]) Size() int {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	return c.cacheSize()
+}
+
+func (c *Cache[T]) cacheSize() int { return c.size }
 
 func (c *Cache[T]) Add(item T) {
 	id := item.ID()
-	// If key already exists in cache, overwrite value and move to front
+
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	n, ok := c.m[id]
 	if ok {
 		n.Item = item
 		c.moveNodeToFront(n)
 	} else {
-		if c.Size() == c.MaxSize {
+		if c.cacheSize() == c.MaxSize {
 			c.evictTail()
 		}
 		n = &Node[T]{Item: item}
@@ -53,6 +66,9 @@ func (c *Cache[T]) Add(item T) {
 // Remove removes an item from the cache. It returns the object if it was removed,
 // otherwise nil will be returned
 func (c *Cache[T]) Remove(id string) *T {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	n, ok := c.m[id]
 	if !ok {
 		return nil
@@ -64,6 +80,9 @@ func (c *Cache[T]) Remove(id string) *T {
 }
 
 func (c *Cache[T]) Get(key string) *T {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	if node, ok := c.m[key]; ok {
 		c.moveNodeToFront(node) // Move most recent GET to front
 		return &node.Item
@@ -74,6 +93,9 @@ func (c *Cache[T]) Get(key string) *T {
 // PeekHead will return the item at the head without moving its position
 // in the cache
 func (c *Cache[T]) PeekHead() *T {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	if c.Head == nil {
 		return nil
 	}
@@ -83,6 +105,9 @@ func (c *Cache[T]) PeekHead() *T {
 // PeekTail will return the item at the tail without moving its position
 // in the cache.
 func (c *Cache[T]) PeekTail() *T {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	if c.Tail == nil {
 		return nil
 	}
@@ -106,10 +131,10 @@ func (c *Cache[T]) removeNode(node *Node[T]) {
 		return
 	}
 
-	if c.Size() == 1 {
+	if c.cacheSize() == 1 {
 		c.Head = nil
 		c.Tail = nil
-	} else if c.Size() == 2 {
+	} else if c.cacheSize() == 2 {
 		if node == c.Head {
 			c.Head = c.Tail
 			c.Head.Prev = nil
@@ -141,7 +166,7 @@ func (c *Cache[T]) removeFromMap(id string) { delete(c.m, id) }
 // actually add the node to the cache via map. That will be done upstream. This function
 // expects the node to already to be added to c.m
 func (c *Cache[T]) insertToFront(node *Node[T]) {
-	if c.Size() == 0 {
+	if c.cacheSize() == 0 {
 		c.Head = node
 		c.Tail = node
 	} else {
@@ -165,6 +190,9 @@ func (c *Cache[T]) moveNodeToFront(node *Node[T]) {
 
 // ForEach will run the given function for each item in the cache in order of the cache
 func (c *Cache[T]) ForEach(f func(item T, index int)) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
 	node := c.Head
 	var i = 0
 	for node != nil {
